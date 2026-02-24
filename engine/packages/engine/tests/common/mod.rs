@@ -2,6 +2,7 @@
 
 pub mod actors;
 pub mod api;
+pub mod behaviors;
 pub mod ctx;
 pub mod test_helpers;
 pub mod test_runner;

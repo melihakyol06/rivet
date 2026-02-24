@@ -1,278 +1,328 @@
-use anyhow::Result;
+use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
-use rivet_runner_protocol::mk2 as rp;
-use std::time::Duration;
-use tokio::sync::{mpsc, oneshot};
+use axum::{Router, body::Body};
+use bytes::Bytes;
+use futures_util::future::BoxFuture;
+use http::{Request, Response};
+use std::{collections::HashMap, future::Future, sync::Arc};
+use tower::ServiceExt;
 
-use crate::protocol;
+use crate::runner::RunnerHandle;
 
-/// Configuration passed to actor when it starts
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ActorConfig {
-	pub actor_id: String,
-	pub generation: u32,
 	pub name: String,
 	pub key: Option<String>,
 	pub create_ts: i64,
 	pub input: Option<Vec<u8>>,
-
-	/// Channel to send events to the runner
-	pub event_tx: mpsc::UnboundedSender<ActorEvent>,
-
-	/// Channel to send KV requests to the runner
-	pub kv_request_tx: mpsc::UnboundedSender<KvRequest>,
 }
 
-impl ActorConfig {
-	pub fn new(
-		config: &rp::ActorConfig,
-		actor_id: String,
-		generation: u32,
-		event_tx: mpsc::UnboundedSender<ActorEvent>,
-		kv_request_tx: mpsc::UnboundedSender<KvRequest>,
-	) -> Self {
-		ActorConfig {
-			actor_id,
-			generation,
-			name: config.name.clone(),
-			key: config.key.clone(),
-			create_ts: config.create_ts,
-			input: config.input.as_ref().map(|i| i.to_vec()),
-			event_tx,
-			kv_request_tx,
-		}
-	}
+#[derive(Clone, Debug)]
+pub struct HibernatingRequest {
+	pub gateway_id: [u8; 4],
+	pub request_id: [u8; 4],
 }
 
-impl ActorConfig {
-	/// Send a sleep intent
-	pub fn send_sleep_intent(&self) {
-		let event = protocol::make_actor_intent(rp::ActorIntent::ActorIntentSleep);
-		self.send_event(event);
-	}
-
-	/// Send a stop intent
-	pub fn send_stop_intent(&self) {
-		let event = protocol::make_actor_intent(rp::ActorIntent::ActorIntentStop);
-		self.send_event(event);
-	}
-
-	/// Set an alarm to wake at specified timestamp (milliseconds)
-	pub fn send_set_alarm(&self, alarm_ts: i64) {
-		let event = protocol::make_set_alarm(Some(alarm_ts));
-		self.send_event(event);
-	}
-
-	/// Clear the alarm
-	pub fn send_clear_alarm(&self) {
-		let event = protocol::make_set_alarm(None);
-		self.send_event(event);
-	}
-
-	/// Send a custom event
-	fn send_event(&self, event: rp::Event) {
-		let actor_event = ActorEvent {
-			actor_id: self.actor_id.clone(),
-			generation: self.generation,
-			event,
-		};
-		let _ = self.event_tx.send(actor_event);
-	}
-
-	/// Send a KV get request
-	pub async fn send_kv_get(&self, keys: Vec<Vec<u8>>) -> Result<rp::KvGetResponse> {
-		let (response_tx, response_rx) = oneshot::channel();
-		let request = KvRequest {
-			actor_id: self.actor_id.clone(),
-			data: rp::KvRequestData::KvGetRequest(rp::KvGetRequest { keys }),
-			response_tx,
-		};
-		self.kv_request_tx
-			.send(request)
-			.map_err(|_| anyhow::anyhow!("failed to send KV get request"))?;
-		let response: rp::KvResponseData = response_rx
-			.await
-			.map_err(|_| anyhow::anyhow!("KV get request response channel closed"))?;
-
-		match response {
-			rp::KvResponseData::KvGetResponse(data) => Ok(data),
-			rp::KvResponseData::KvErrorResponse(err) => {
-				Err(anyhow::anyhow!("KV get failed: {}", err.message))
-			}
-			_ => Err(anyhow::anyhow!("unexpected response type for KV get")),
-		}
-	}
-
-	/// Send a KV list request
-	pub async fn send_kv_list(
-		&self,
-		query: rp::KvListQuery,
-		reverse: Option<bool>,
-		limit: Option<u64>,
-	) -> Result<rp::KvListResponse> {
-		let (response_tx, response_rx) = oneshot::channel();
-		let request = KvRequest {
-			actor_id: self.actor_id.clone(),
-			data: rp::KvRequestData::KvListRequest(rp::KvListRequest {
-				query,
-				reverse,
-				limit,
-			}),
-			response_tx,
-		};
-		self.kv_request_tx
-			.send(request)
-			.map_err(|_| anyhow::anyhow!("failed to send KV list request"))?;
-		let response: rp::KvResponseData = response_rx
-			.await
-			.map_err(|_| anyhow::anyhow!("KV list request response channel closed"))?;
-
-		match response {
-			rp::KvResponseData::KvListResponse(data) => Ok(data),
-			rp::KvResponseData::KvErrorResponse(err) => {
-				Err(anyhow::anyhow!("KV list failed: {}", err.message))
-			}
-			_ => Err(anyhow::anyhow!("unexpected response type for KV list")),
-		}
-	}
-
-	/// Send a KV put request
-	pub async fn send_kv_put(&self, keys: Vec<Vec<u8>>, values: Vec<Vec<u8>>) -> Result<()> {
-		let (response_tx, response_rx) = oneshot::channel();
-		let request = KvRequest {
-			actor_id: self.actor_id.clone(),
-			data: rp::KvRequestData::KvPutRequest(rp::KvPutRequest { keys, values }),
-			response_tx,
-		};
-
-		self.kv_request_tx
-			.send(request)
-			.map_err(|_| anyhow::anyhow!("failed to send KV put request"))?;
-
-		let response: rp::KvResponseData = response_rx
-			.await
-			.map_err(|_| anyhow::anyhow!("KV put request response channel closed"))?;
-
-		match response {
-			rp::KvResponseData::KvPutResponse => Ok(()),
-			rp::KvResponseData::KvErrorResponse(err) => {
-				Err(anyhow::anyhow!("KV put failed: {}", err.message))
-			}
-			_ => Err(anyhow::anyhow!("unexpected response type for KV put")),
-		}
-	}
-
-	/// Send a KV delete request
-	pub async fn send_kv_delete(&self, keys: Vec<Vec<u8>>) -> Result<()> {
-		let (response_tx, response_rx) = oneshot::channel();
-		let request = KvRequest {
-			actor_id: self.actor_id.clone(),
-			data: rp::KvRequestData::KvDeleteRequest(rp::KvDeleteRequest { keys }),
-			response_tx,
-		};
-		self.kv_request_tx
-			.send(request)
-			.map_err(|_| anyhow::anyhow!("failed to send KV delete request"))?;
-		let response: rp::KvResponseData = response_rx
-			.await
-			.map_err(|_| anyhow::anyhow!("KV delete request response channel closed"))?;
-
-		match response {
-			rp::KvResponseData::KvDeleteResponse => Ok(()),
-			rp::KvResponseData::KvErrorResponse(err) => {
-				Err(anyhow::anyhow!("KV delete failed: {}", err.message))
-			}
-			_ => Err(anyhow::anyhow!("unexpected response type for KV delete")),
-		}
-	}
-
-	/// Send a KV drop request
-	pub async fn send_kv_drop(&self) -> Result<()> {
-		let (response_tx, response_rx) = oneshot::channel();
-		let request = KvRequest {
-			actor_id: self.actor_id.clone(),
-			data: rp::KvRequestData::KvDropRequest,
-			response_tx,
-		};
-		self.kv_request_tx
-			.send(request)
-			.map_err(|_| anyhow::anyhow!("failed to send KV drop request"))?;
-		let response: rp::KvResponseData = response_rx
-			.await
-			.map_err(|_| anyhow::anyhow!("KV drop request response channel closed"))?;
-
-		match response {
-			rp::KvResponseData::KvDropResponse => Ok(()),
-			rp::KvResponseData::KvErrorResponse(err) => {
-				Err(anyhow::anyhow!("KV drop failed: {}", err.message))
-			}
-			_ => Err(anyhow::anyhow!("unexpected response type for KV drop")),
-		}
-	}
-}
-
-/// Result of actor start operation
-#[derive(Debug, Clone)]
-pub enum ActorStartResult {
-	/// Send ActorStateRunning immediately
-	Running,
-	/// Wait specified duration before sending running
-	Delay(Duration),
-	/// Never send running (simulates timeout)
-	Timeout,
-	/// Crash immediately with exit code
-	Crash { code: i32, message: String },
-}
-
-/// Result of actor stop operation
-#[derive(Debug, Clone)]
-pub enum ActorStopResult {
-	/// Stop successfully (exit code 0)
-	Success,
-	/// Wait before stopping
-	Delay(Duration),
-	/// Crash with exit code
-	Crash { code: i32, message: String },
-}
-
-/// Trait for test actors that can be controlled programmatically
-#[async_trait]
-pub trait TestActor: Send + Sync {
-	/// Called when actor receives start command
-	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult>;
-
-	/// Called when actor receives stop command
-	async fn on_stop(&mut self) -> Result<ActorStopResult>;
-
-	/// Called when actor receives alarm wake signal
-	async fn on_alarm(&mut self) -> Result<()> {
-		tracing::debug!("actor received alarm (default no-op)");
-		Ok(())
-	}
-
-	/// Called when actor receives wake signal (from sleep)
-	async fn on_wake(&mut self) -> Result<()> {
-		tracing::debug!("actor received wake (default no-op)");
-		Ok(())
-	}
-
-	/// Get actor's name for logging
-	fn name(&self) -> &str {
-		"TestActor"
-	}
-}
-
-/// Events that actors can send directly via the event channel
-#[derive(Debug, Clone)]
-pub struct ActorEvent {
+#[derive(Clone, Debug)]
+pub struct ActorContext {
 	pub actor_id: String,
 	pub generation: u32,
-	pub event: rp::Event,
+	pub actor_name: String,
+	pub config: ActorConfig,
+	pub hibernating_requests: Vec<HibernatingRequest>,
 }
 
-/// KV requests that actors can send to the runner
-pub struct KvRequest {
+#[derive(Clone, Debug)]
+pub struct HttpContext {
 	pub actor_id: String,
-	pub data: rp::KvRequestData,
-	pub response_tx: oneshot::Sender<rp::KvResponseData>,
+	pub generation: u32,
+	pub actor_name: String,
+	pub gateway_id: [u8; 4],
+	pub request_id: [u8; 4],
+}
+
+#[derive(Clone, Debug)]
+pub struct WebSocketContext {
+	pub actor_id: String,
+	pub generation: u32,
+	pub actor_name: String,
+	pub gateway_id: [u8; 4],
+	pub request_id: [u8; 4],
+	pub path: String,
+	pub headers: HashMap<String, String>,
+	pub is_hibernatable: bool,
+	pub is_restoring_hibernatable: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct HibernatingWebSocketMetadata {
+	pub gateway_id: [u8; 4],
+	pub request_id: [u8; 4],
+	pub client_message_index: u16,
+	pub server_message_index: u16,
+	pub path: String,
+	pub headers: HashMap<String, String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct WebSocketMessage {
+	pub data: Vec<u8>,
+	pub binary: bool,
+	pub message_index: u16,
+}
+
+#[derive(Clone)]
+pub struct ActorRequestContext {
+	pub runner: RunnerHandle,
+	pub actor_id: String,
+	pub generation: u32,
+	pub actor_name: String,
+}
+
+impl ActorRequestContext {
+	pub async fn kv_get(&self, keys: Vec<Vec<u8>>) -> Result<Vec<Option<Vec<u8>>>> {
+		self.runner.kv_get(&self.actor_id, keys).await
+	}
+
+	pub async fn kv_get_u64(&self, key: impl AsRef<[u8]>) -> Result<Option<u64>> {
+		let values = self.kv_get(vec![key.as_ref().to_vec()]).await?;
+		let Some(raw) = values.into_iter().next().flatten() else {
+			return Ok(None);
+		};
+
+		if raw.len() != 8 {
+			bail!("expected u64 value to be 8 bytes, got {}", raw.len());
+		}
+
+		let mut bytes = [0u8; 8];
+		bytes.copy_from_slice(&raw);
+		Ok(Some(u64::from_le_bytes(bytes)))
+	}
+
+	pub async fn kv_put(&self, entries: Vec<(Vec<u8>, Vec<u8>)>) -> Result<()> {
+		self.runner.kv_put(&self.actor_id, entries).await
+	}
+
+	pub async fn kv_put_u64(&self, key: impl AsRef<[u8]>, value: u64) -> Result<()> {
+		self.kv_put(vec![(key.as_ref().to_vec(), value.to_le_bytes().to_vec())])
+			.await
+	}
+
+	pub async fn kv_delete(&self, keys: Vec<Vec<u8>>) -> Result<()> {
+		self.runner.kv_delete(&self.actor_id, keys).await
+	}
+
+	pub async fn kv_drop(&self) -> Result<()> {
+		self.runner.kv_drop(&self.actor_id).await
+	}
+
+	pub async fn sleep_actor(&self) -> Result<()> {
+		self.runner
+			.sleep_actor(&self.actor_id, Some(self.generation))
+			.await
+	}
+
+	pub async fn stop_actor(&self) -> Result<()> {
+		self.runner
+			.stop_actor(&self.actor_id, Some(self.generation))
+			.await
+	}
+
+	pub async fn set_alarm(&self, alarm_ts: Option<i64>) -> Result<()> {
+		self.runner
+			.set_alarm(&self.actor_id, alarm_ts, Some(self.generation))
+			.await
+	}
+
+	pub async fn clear_alarm(&self) -> Result<()> {
+		self.set_alarm(None).await
+	}
+}
+
+#[async_trait]
+pub trait RunnerApp: Send + Sync + 'static {
+	async fn on_connected(&self, _runner: RunnerHandle) -> Result<()> {
+		Ok(())
+	}
+
+	async fn on_disconnected(&self, _runner: RunnerHandle, _code: u16, _reason: String) -> Result<()> {
+		Ok(())
+	}
+
+	async fn on_shutdown(&self, _runner: RunnerHandle) -> Result<()> {
+		Ok(())
+	}
+
+	async fn on_actor_start(&self, _runner: RunnerHandle, _ctx: ActorContext) -> Result<()> {
+		Ok(())
+	}
+
+	async fn on_actor_stop(&self, _runner: RunnerHandle, _ctx: ActorContext) -> Result<()> {
+		Ok(())
+	}
+
+	async fn fetch(
+		&self,
+		_runner: RunnerHandle,
+		_ctx: HttpContext,
+		_request: Request<Bytes>,
+	) -> Result<Response<Bytes>> {
+		Ok(Response::builder()
+			.status(501)
+			.body(Bytes::from_static(b"Not Implemented"))?)
+	}
+
+	async fn websocket(
+		&self,
+		_runner: RunnerHandle,
+		_ctx: WebSocketContext,
+	) -> Result<()> {
+		Ok(())
+	}
+
+	async fn websocket_message(
+		&self,
+		_runner: RunnerHandle,
+		_ctx: WebSocketContext,
+		_message: WebSocketMessage,
+	) -> Result<()> {
+		Ok(())
+	}
+
+	async fn websocket_close(
+		&self,
+		_runner: RunnerHandle,
+		_ctx: WebSocketContext,
+		_code: Option<u16>,
+		_reason: Option<String>,
+	) -> Result<()> {
+		Ok(())
+	}
+
+	fn can_hibernate(&self, _ctx: &WebSocketContext) -> bool {
+		false
+	}
+}
+
+type LifecycleHook = Arc<dyn Fn(ActorContext) -> BoxFuture<'static, Result<()>> + Send + Sync>;
+
+#[derive(Clone)]
+pub struct AxumActorDefinition {
+	router: Router<ActorRequestContext>,
+	on_start: Option<LifecycleHook>,
+	on_stop: Option<LifecycleHook>,
+}
+
+impl AxumActorDefinition {
+	pub fn new(router: Router<ActorRequestContext>) -> Self {
+		Self {
+			router,
+			on_start: None,
+			on_stop: None,
+		}
+	}
+
+	pub fn on_start<F, Fut>(mut self, hook: F) -> Self
+	where
+		F: Fn(ActorContext) -> Fut + Send + Sync + 'static,
+		Fut: Future<Output = Result<()>> + Send + 'static,
+	{
+		self.on_start = Some(Arc::new(move |ctx| Box::pin(hook(ctx))));
+		self
+	}
+
+	pub fn on_stop<F, Fut>(mut self, hook: F) -> Self
+	where
+		F: Fn(ActorContext) -> Fut + Send + Sync + 'static,
+		Fut: Future<Output = Result<()>> + Send + 'static,
+	{
+		self.on_stop = Some(Arc::new(move |ctx| Box::pin(hook(ctx))));
+		self
+	}
+}
+
+#[derive(Clone, Default)]
+pub struct AxumRunnerApp {
+	actors: HashMap<String, AxumActorDefinition>,
+}
+
+impl AxumRunnerApp {
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	pub fn with_actor(mut self, name: impl Into<String>, definition: AxumActorDefinition) -> Self {
+		self.actors.insert(name.into(), definition);
+		self
+	}
+
+	pub fn actor(&self, name: &str) -> Option<&AxumActorDefinition> {
+		self.actors.get(name)
+	}
+}
+
+#[async_trait]
+impl RunnerApp for AxumRunnerApp {
+	async fn on_actor_start(&self, _runner: RunnerHandle, ctx: ActorContext) -> Result<()> {
+		let actor = self
+			.actors
+			.get(&ctx.actor_name)
+			.with_context(|| format!("actor '{}' is not registered", ctx.actor_name))?;
+
+		if let Some(on_start) = &actor.on_start {
+			on_start(ctx).await?;
+		}
+
+		Ok(())
+	}
+
+	async fn on_actor_stop(&self, _runner: RunnerHandle, ctx: ActorContext) -> Result<()> {
+		let actor = self
+			.actors
+			.get(&ctx.actor_name)
+			.with_context(|| format!("actor '{}' is not registered", ctx.actor_name))?;
+
+		if let Some(on_stop) = &actor.on_stop {
+			on_stop(ctx).await?;
+		}
+
+		Ok(())
+	}
+
+	async fn fetch(
+		&self,
+		runner: RunnerHandle,
+		ctx: HttpContext,
+		request: Request<Bytes>,
+	) -> Result<Response<Bytes>> {
+		let actor = self
+			.actors
+			.get(&ctx.actor_name)
+			.with_context(|| format!("actor '{}' is not registered", ctx.actor_name))?;
+
+		let state = ActorRequestContext {
+			runner,
+			actor_id: ctx.actor_id.clone(),
+			generation: ctx.generation,
+			actor_name: ctx.actor_name,
+		};
+
+		let (parts, body) = request.into_parts();
+		let request = Request::from_parts(parts, Body::from(body));
+
+		let response = actor
+			.router
+			.clone()
+			.with_state(state)
+			.oneshot(request)
+			.await
+			.context("failed to serve axum actor route")?;
+
+		let (parts, body) = response.into_parts();
+		let body = axum::body::to_bytes(body, usize::MAX)
+			.await
+			.context("failed to collect actor response body")?;
+
+		Ok(Response::from_parts(parts, body))
+	}
 }

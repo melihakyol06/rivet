@@ -17,35 +17,3 @@ pub fn encode_to_server(msg: rp2::ToServer) -> Vec<u8> {
 		.serialize(PROTOCOL_VERSION)
 		.expect("failed to serialize ToServer")
 }
-
-/// Helper to create event wrapper with checkpoint (MK2)
-pub fn make_event_wrapper(
-	actor_id: &str,
-	generation: u32,
-	index: u64,
-	event: rp2::Event,
-) -> rp2::EventWrapper {
-	rp2::EventWrapper {
-		checkpoint: rp2::ActorCheckpoint {
-			actor_id: actor_id.to_string(),
-			generation,
-			index: index as i64,
-		},
-		inner: event,
-	}
-}
-
-/// Helper to create actor state update event (MK2)
-pub fn make_actor_state_update(state: rp2::ActorState) -> rp2::Event {
-	rp2::Event::EventActorStateUpdate(rp2::EventActorStateUpdate { state })
-}
-
-/// Helper to create actor intent event (MK2)
-pub fn make_actor_intent(intent: rp2::ActorIntent) -> rp2::Event {
-	rp2::Event::EventActorIntent(rp2::EventActorIntent { intent })
-}
-
-/// Helper to create set alarm event (MK2)
-pub fn make_set_alarm(alarm_ts: Option<i64>) -> rp2::Event {
-	rp2::Event::EventActorSetAlarm(rp2::EventActorSetAlarm { alarm_ts })
-}

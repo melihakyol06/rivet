@@ -8,16 +8,31 @@ description = "Rust-based engine runner for Rivet, enabling programmatic actor l
 
 [dependencies]
 anyhow.workspace = true
+async-stream.workspace = true
 async-trait.workspace = true
+axum.workspace = true
+base64.workspace = true
+bytes.workspace = true
 chrono.workspace = true
 futures-util.workspace = true
+http.workspace = true
 rand.workspace = true
+reqwest.workspace = true
 rivet-runner-protocol.workspace = true
 serde_bare.workspace = true
 serde_json.workspace = true
 serde.workspace = true
+tokio-stream.workspace = true
 tokio.workspace = true
 tokio-tungstenite.workspace = true
+tower.workspace = true
 tracing.workspace = true
 urlencoding.workspace = true
 vbare.workspace = true
+
+[dev-dependencies]
+portpicker.workspace = true
+rivet-config.workspace = true
+rivet-test-deps.workspace = true
+serde_yaml.workspace = true
+tempfile.workspace = true

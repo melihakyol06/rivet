@@ -598,7 +598,7 @@ fn get_or_create_with_destroyed_actor() {
 				actor_id: first_actor_id,
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace.clone()),
+				namespace: namespace.clone(),
 			},
 		)
 		.await

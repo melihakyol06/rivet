@@ -42,7 +42,7 @@ fn actor_basic_create() {
 			"runner should have the actor allocated"
 		);
 
-		tracing::info!(?actor_id, runner_id = ?runner.runner_id, "actor allocated to runner");
+		tracing::info!(?actor_id, "actor allocated to runner");
 	});
 }
 
@@ -406,7 +406,7 @@ fn actor_explicit_destroy() {
 				actor_id: actor_id.parse().expect("failed to parse actor_id"),
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace.clone()),
+				namespace: namespace.clone(),
 			},
 		)
 		.await
@@ -1143,7 +1143,7 @@ fn runner_at_max_capacity() {
 					actor_id: actor_ids[0].parse().unwrap(),
 				},
 				common::api_types::actors::delete::DeleteQuery {
-					namespace: Some(namespace.clone()),
+					namespace: namespace.clone(),
 				},
 			)
 			.await

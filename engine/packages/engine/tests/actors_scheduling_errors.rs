@@ -926,7 +926,7 @@ fn serverless_connection_refused_error() {
 	);
 }
 
-/// Tests that ServerlessInvalidPayload error is returned when the serverless endpoint
+/// Tests that ServerlessInvalidSsePayload error is returned when the serverless endpoint
 /// returns malformed SSE data.
 #[test]
 fn serverless_invalid_payload_error() {
@@ -952,7 +952,7 @@ fn serverless_invalid_payload_error() {
 			// Wait for error to be tracked
 			tokio::time::sleep(Duration::from_millis(1500)).await;
 
-			// Verify pool error is a base64 or payload error
+			// Verify pool error is an invalid SSE payload error.
 			let pool_error =
 				get_runner_config_pool_error(guard_port, &namespace, &runner_name).await;
 
@@ -961,15 +961,11 @@ fn serverless_invalid_payload_error() {
 			tracing::info!(?pool_error, "pool error received");
 
 			match pool_error {
-				rivet_types::actor::RunnerPoolError::ServerlessInvalidPayload { message } => {
-					tracing::info!(?message, "got ServerlessInvalidPayload as expected");
-				}
-				// Could also be InvalidBase64 depending on the payload
-				rivet_types::actor::RunnerPoolError::ServerlessInvalidBase64 => {
-					tracing::info!("got ServerlessInvalidBase64 as expected");
+				rivet_types::actor::RunnerPoolError::ServerlessInvalidSsePayload { message, .. } => {
+					tracing::info!(?message, "got ServerlessInvalidSsePayload as expected");
 				}
 				other => panic!(
-					"expected ServerlessInvalidPayload or ServerlessInvalidBase64, got: {:?}",
+					"expected ServerlessInvalidSsePayload, got: {:?}",
 					other
 				),
 			}

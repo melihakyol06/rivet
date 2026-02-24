@@ -344,7 +344,7 @@ fn list_with_include_destroyed_false() {
 				actor_id: destroyed_actor_id,
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace.clone()),
+				namespace: namespace.clone(),
 			},
 		)
 		.await
@@ -424,7 +424,7 @@ fn list_with_include_destroyed_true() {
 				actor_id: res1.actor.actor_id,
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace.clone()),
+				namespace: namespace.clone(),
 			},
 		)
 		.await
@@ -938,7 +938,7 @@ fn list_by_key_with_include_destroyed_true() {
 				actor_id: res1.actor.actor_id,
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace.clone()),
+				namespace: namespace.clone(),
 			},
 		)
 		.await

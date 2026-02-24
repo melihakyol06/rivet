@@ -1,6 +1,8 @@
-use crate::actor::*;
+#![allow(dead_code)]
+
 use anyhow::Result;
 use async_trait::async_trait;
+use super::test_runner::{Actor, ActorConfig, ActorStartResult, ActorStopResult};
 use std::{
 	sync::{Arc, Mutex},
 	time::Duration,
@@ -22,7 +24,7 @@ impl Default for EchoActor {
 }
 
 #[async_trait]
-impl TestActor for EchoActor {
+impl Actor for EchoActor {
 	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult> {
 		tracing::info!(actor_id = ?config.actor_id, generation = config.generation, "echo actor started");
 		Ok(ActorStartResult::Running)
@@ -67,7 +69,7 @@ impl CrashOnStartActor {
 }
 
 #[async_trait]
-impl TestActor for CrashOnStartActor {
+impl Actor for CrashOnStartActor {
 	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult> {
 		tracing::warn!(
 			actor_id = ?config.actor_id,
@@ -111,7 +113,7 @@ impl DelayedStartActor {
 }
 
 #[async_trait]
-impl TestActor for DelayedStartActor {
+impl Actor for DelayedStartActor {
 	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult> {
 		tracing::info!(
 			actor_id = ?config.actor_id,
@@ -147,7 +149,7 @@ impl Default for TimeoutActor {
 }
 
 #[async_trait]
-impl TestActor for TimeoutActor {
+impl Actor for TimeoutActor {
 	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult> {
 		tracing::warn!(
 			actor_id = ?config.actor_id,
@@ -192,7 +194,7 @@ impl Default for SleepImmediatelyActor {
 }
 
 #[async_trait]
-impl TestActor for SleepImmediatelyActor {
+impl Actor for SleepImmediatelyActor {
 	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult> {
 		tracing::info!(
 			actor_id = ?config.actor_id,
@@ -240,7 +242,7 @@ impl Default for StopImmediatelyActor {
 }
 
 #[async_trait]
-impl TestActor for StopImmediatelyActor {
+impl Actor for StopImmediatelyActor {
 	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult> {
 		tracing::info!(
 			actor_id = ?config.actor_id,
@@ -277,7 +279,7 @@ impl CountingCrashActor {
 }
 
 #[async_trait]
-impl TestActor for CountingCrashActor {
+impl Actor for CountingCrashActor {
 	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult> {
 		let count = self
 			.crash_count
@@ -303,8 +305,8 @@ impl TestActor for CountingCrashActor {
 	}
 }
 
-/// Actor that crashes N times then succeeds
-/// Used to test crash policy restart with retry reset on success
+/// Actor that crashes N times then succeeds.
+/// Used to test crash policy restart with retry reset on success.
 pub struct CrashNTimesThenSucceedActor {
 	crash_count: Arc<Mutex<usize>>,
 	max_crashes: usize,
@@ -320,7 +322,7 @@ impl CrashNTimesThenSucceedActor {
 }
 
 #[async_trait]
-impl TestActor for CrashNTimesThenSucceedActor {
+impl Actor for CrashNTimesThenSucceedActor {
 	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult> {
 		let mut count = self.crash_count.lock().unwrap();
 		let current = *count;
@@ -358,8 +360,8 @@ impl TestActor for CrashNTimesThenSucceedActor {
 	}
 }
 
-/// Actor that notifies via a oneshot channel when it starts running
-/// This allows tests to wait for the actor to actually start instead of sleeping
+/// Actor that notifies via a oneshot channel when it starts running.
+/// This allows tests to wait for the actor to actually start instead of sleeping.
 pub struct NotifyOnStartActor {
 	notify_tx: std::sync::Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
 }
@@ -373,7 +375,7 @@ impl NotifyOnStartActor {
 }
 
 #[async_trait]
-impl TestActor for NotifyOnStartActor {
+impl Actor for NotifyOnStartActor {
 	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult> {
 		tracing::info!(
 			actor_id = ?config.actor_id,
@@ -400,8 +402,8 @@ impl TestActor for NotifyOnStartActor {
 	}
 }
 
-/// Actor that verifies it received the expected input data
-/// Crashes if input doesn't match or is missing, succeeds if it matches
+/// Actor that verifies it received the expected input data.
+/// Crashes if input doesn't match or is missing, succeeds if it matches.
 pub struct VerifyInputActor {
 	expected_input: Vec<u8>,
 }
@@ -413,7 +415,7 @@ impl VerifyInputActor {
 }
 
 #[async_trait]
-impl TestActor for VerifyInputActor {
+impl Actor for VerifyInputActor {
 	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult> {
 		tracing::info!(
 			actor_id = ?config.actor_id,
@@ -463,8 +465,8 @@ impl TestActor for VerifyInputActor {
 	}
 }
 
-/// Generic actor that accepts closures for on_start and on_stop
-/// This allows tests to define actor behavior inline without creating separate structs
+/// Generic actor that accepts closures for on_start and on_stop.
+/// This allows tests to define actor behavior inline without creating separate structs.
 pub struct CustomActor {
 	on_start_fn: Box<
 		dyn Fn(
@@ -567,7 +569,7 @@ impl Default for CustomActorBuilder {
 }
 
 #[async_trait]
-impl TestActor for CustomActor {
+impl Actor for CustomActor {
 	async fn on_start(&mut self, config: ActorConfig) -> Result<ActorStartResult> {
 		(self.on_start_fn)(config).await
 	}

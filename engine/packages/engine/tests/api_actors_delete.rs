@@ -36,7 +36,7 @@ fn delete_existing_actor_with_namespace() {
 				actor_id: actor_id.parse().expect("failed to parse actor_id"),
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace.clone()),
+				namespace: namespace.clone(),
 			},
 		)
 		.await
@@ -82,7 +82,7 @@ fn delete_existing_actor_without_namespace() {
 			common::api_types::actors::delete::DeletePath {
 				actor_id: actor_id.parse().expect("failed to parse actor_id"),
 			},
-			common::api_types::actors::delete::DeleteQuery { namespace: None },
+			common::api_types::actors::delete::DeleteQuery { namespace: "".to_string() },
 		)
 		.await
 		.expect("failed to delete actor");
@@ -123,7 +123,7 @@ fn delete_actor_current_datacenter() {
 			ctx.leader_dc().guard_port(),
 			common::api_types::actors::delete::DeletePath { actor_id: actor_id },
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace.clone()),
+				namespace: namespace.clone(),
 			},
 		)
 		.await
@@ -171,7 +171,7 @@ fn delete_actor_remote_datacenter() {
 				actor_id: actor_id.parse().expect("failed to parse actor_id"),
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace.clone()),
+				namespace: namespace.clone(),
 			},
 		)
 		.await
@@ -198,7 +198,7 @@ fn delete_non_existent_actor() {
 			common::api_types::actors::delete::DeletePath {
 				actor_id: fake_actor_id,
 			},
-			common::api_types::actors::delete::DeleteQuery { namespace: None },
+			common::api_types::actors::delete::DeleteQuery { namespace: "".to_string() },
 		)
 		.await;
 
@@ -240,7 +240,7 @@ fn delete_actor_wrong_namespace() {
 				actor_id: actor_id.parse().expect("failed to parse actor_id"),
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace2.clone()),
+				namespace: namespace2.clone(),
 			},
 		)
 		.await;
@@ -287,7 +287,7 @@ fn delete_with_non_existent_namespace() {
 				actor_id: actor_id.parse().expect("failed to parse actor_id"),
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some("non-existent-namespace".to_string()),
+				namespace: "non-existent-namespace".to_string(),
 			},
 		)
 		.await;
@@ -337,7 +337,7 @@ fn delete_remote_actor_verify_propagation() {
 				actor_id: actor_id.parse().expect("failed to parse actor_id"),
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace.clone()),
+				namespace: namespace.clone(),
 			},
 		)
 		.await
@@ -384,7 +384,7 @@ fn delete_already_destroyed_actor() {
 				actor_id: actor_id.parse().expect("failed to parse actor_id"),
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace.clone()),
+				namespace: namespace.clone(),
 			},
 		)
 		.await
@@ -398,7 +398,7 @@ fn delete_already_destroyed_actor() {
 				actor_id: actor_id.parse().expect("failed to parse actor_id"),
 			},
 			common::api_types::actors::delete::DeleteQuery {
-				namespace: Some(namespace.clone()),
+				namespace: namespace.clone(),
 			},
 		)
 		.await;
@@ -448,7 +448,7 @@ fn delete_actor_twice_rapidly() {
 					actor_id: actor_id.parse().expect("failed to parse actor_id"),
 				},
 				common::api_types::actors::delete::DeleteQuery {
-					namespace: Some(namespace.clone()),
+					namespace: namespace.clone(),
 				},
 			)
 			.await
@@ -461,7 +461,7 @@ fn delete_actor_twice_rapidly() {
 					actor_id: actor_id_clone.parse().expect("failed to parse actor_id"),
 				},
 				common::api_types::actors::delete::DeleteQuery {
-					namespace: Some(namespace_clone.clone()),
+					namespace: namespace_clone.clone(),
 				},
 			)
 			.await
