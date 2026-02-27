@@ -17,6 +17,7 @@ import type {
 	OrganizationContext,
 	ProjectContext,
 } from "@/app/data-providers/cache";
+import { DevToolbar } from "@/app/dev-toolbar";
 import { FullscreenLoading } from "@/components";
 import { clerk } from "@/lib/auth";
 import { cloudEnv } from "@/lib/env";
@@ -64,6 +65,8 @@ function CloudRoute() {
 			}}
 		>
 			<Outlet />
+
+			<DevToolbar />
 			{import.meta.env.DEV ? (
 				<TanStackRouterDevtools position="bottom-right" />
 			) : null}
