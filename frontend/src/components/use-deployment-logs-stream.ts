@@ -1,5 +1,7 @@
-import { RivetSse } from "@rivet-gg/cloud";
-import { startTransition, useEffect, useRef, useState } from "react";
+import { type Rivet, RivetSse } from "@rivet-gg/cloud";
+import { type InfiniteData, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useCloudNamespaceDataProvider } from "@/components/actors";
 import { clerk } from "@/lib/auth";
 import { cloudEnv } from "@/lib/env";
 
@@ -20,65 +22,9 @@ async function sleep(ms: number, signal: AbortSignal) {
 	});
 }
 
-async function streamWithRetry(
-	project: string,
-	namespace: string,
-	pool: string,
-	filter: string | undefined,
-	region: string | undefined,
-	signal: AbortSignal,
-	onConnected: () => void,
-	onEntry: (entry: RivetSse.LogStreamEvent.Log) => void,
-): Promise<"exhausted" | "ended" | "aborted" | { error: string }> {
-	const options = {
-		baseUrl: cloudEnv().VITE_APP_CLOUD_API_URL,
-		environment: "",
-		token: async () => (await clerk.session?.getToken()) || "",
-	};
-
-	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-		if (signal.aborted) return "aborted";
-
-		try {
-			const stream = RivetSse.streamLogs(
-				options,
-				project,
-				namespace,
-				pool,
-				{
-					contains: filter || undefined,
-					region: region || undefined,
-					abortSignal: signal,
-				},
-			);
-
-			for await (const event of stream) {
-				if (event.event === "connected") {
-					onConnected();
-				} else if (event.event === "end") {
-					return "ended";
-				} else if (event.event === "error") {
-					return { error: event.data.message };
-				} else if (event.event === "log") {
-					onEntry(event);
-				}
-			}
-		} catch (err) {
-			if ((err as Error).name === "AbortError") return "aborted";
-			console.error(`Log stream error (attempt ${attempt + 1}):`, err);
-		}
-
-		if (attempt < MAX_RETRIES) {
-			await sleep(BASE_DELAY_MS * 2 ** attempt, signal);
-		}
-	}
-
-	return "exhausted";
-}
+type RawInfiniteData = InfiniteData<Rivet.LogHistoryResponseItem[]>;
 
 interface UseDeploymentLogsStreamOptions {
-	project: string;
-	namespace: string;
 	pool: string;
 	filter?: string;
 	region?: string;
@@ -86,85 +32,127 @@ interface UseDeploymentLogsStreamOptions {
 }
 
 export function useDeploymentLogsStream({
-	project,
-	namespace,
 	pool,
 	filter,
 	region,
 	paused = false,
 }: UseDeploymentLogsStreamOptions) {
-	const [logs, setLogs] = useState<RivetSse.LogStreamEvent.Log[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
-	const pendingRef = useRef<RivetSse.LogStreamEvent.Log[]>([]);
-	const pausedRef = useRef(paused);
+	const dataProvider = useCloudNamespaceDataProvider();
+	const queryClient = useQueryClient();
 
+	const queryOpts = dataProvider.currentNamespaceLogsHistoryInfiniteQueryOptions({
+		pool,
+		contains: filter,
+		region,
+	});
+
+	const { data, isFetching, isFetchingPreviousPage, hasPreviousPage, fetchPreviousPage, error } =
+		useInfiniteQuery(queryOpts);
+
+	const logs = data?.logs ?? [];
+
+	const [streamError, setStreamError] = useState<string | null>(null);
+
+	const pausedRef = useRef(paused);
 	useEffect(() => {
 		pausedRef.current = paused;
 	}, [paused]);
 
-	useEffect(() => {
-		setLogs([]);
-		setIsLoading(true);
-		setError(null);
-		pendingRef.current = [];
+	const pendingRef = useRef<Rivet.LogHistoryResponseItem[]>([]);
 
+	// Keep a ref to the query key so the SSE effect doesn't need it as a dep.
+	const queryKeyRef = useRef(queryOpts.queryKey);
+	useEffect(() => {
+		queryKeyRef.current = queryOpts.queryKey;
+	}, [queryOpts.queryKey]);
+
+	const appendToCache = useCallback((items: Rivet.LogHistoryResponseItem[]) => {
+		queryClient.setQueryData(queryKeyRef.current, (prev: RawInfiniteData | undefined) => {
+			if (!prev) return prev;
+			const pages = [...prev.pages];
+			pages[pages.length - 1] = [...(pages.at(-1) ?? []), ...items];
+			return { ...prev, pages };
+		});
+	}, [queryClient]);
+
+	// SSE stream — appends live entries directly into the query cache.
+	useEffect(() => {
 		const controller = new AbortController();
 
-		function onEntry(entry: RivetSse.LogStreamEvent.Log) {
-			setIsLoading(false);
-			pendingRef.current.push(entry);
-			if (!pausedRef.current) {
-				const toFlush = pendingRef.current;
-				pendingRef.current = [];
-				startTransition(() => {
-					setLogs((prev) => [...prev, ...toFlush]);
-				});
+		async function stream() {
+			const options = {
+				baseUrl: cloudEnv().VITE_APP_CLOUD_API_URL,
+				environment: "",
+				token: async () => (await clerk.session?.getToken()) || "",
+			};
+
+			for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+				if (controller.signal.aborted) return;
+
+				try {
+					const events = RivetSse.streamLogs(
+						options,
+						dataProvider.project,
+						dataProvider.cloudNamespace,
+						pool,
+						{
+							contains: filter || undefined,
+							region: region || undefined,
+							abortSignal: controller.signal,
+						},
+					);
+
+					for await (const event of events) {
+						if (controller.signal.aborted) return;
+
+						if (event.event === "error") {
+							setStreamError(event.data.message);
+							continue;
+						}
+
+						if (event.event !== "log") continue;
+
+						setStreamError(null);
+
+						if (pausedRef.current) {
+							pendingRef.current.push(event.data);
+							continue;
+						}
+
+						const toAppend = [...pendingRef.current, event.data];
+						pendingRef.current = [];
+						appendToCache(toAppend);
+					}
+				} catch (err) {
+					if ((err as Error).name === "AbortError") return;
+					console.error(`Log stream error (attempt ${attempt + 1}):`, err);
+				}
+
+				if (attempt < MAX_RETRIES) {
+					await sleep(BASE_DELAY_MS * 2 ** attempt, controller.signal);
+				}
 			}
 		}
 
-		streamWithRetry(
-			project,
-			namespace,
-			pool,
-			filter,
-			region,
-			controller.signal,
-			() => setIsLoading(false),
-			onEntry,
-		)
-			.then((result) => {
-				setIsLoading(false);
-				if (result === "exhausted") {
-					setError(
-						"Failed to connect to log stream after multiple attempts.",
-					);
-				} else if (typeof result === "object") {
-					setError(result.error);
-				}
-			})
-			.catch((err) => {
-				if ((err as Error).name !== "AbortError") {
-					console.error("Log stream fatal error:", err);
-					setIsLoading(false);
-					setError(
-						"An unexpected error occurred while streaming logs.",
-					);
-				}
-			});
-
+		void stream();
 		return () => controller.abort();
-	}, [project, namespace, pool, filter, region]);
+	}, [dataProvider.project, dataProvider.cloudNamespace, pool, filter, region, appendToCache]);
 
+	// Flush pending entries when unpaused.
 	useEffect(() => {
-		if (!paused && pendingRef.current.length > 0) {
-			const toFlush = pendingRef.current;
-			pendingRef.current = [];
-			startTransition(() => {
-				setLogs((prev) => [...prev, ...toFlush]);
-			});
-		}
-	}, [paused]);
+		if (paused || pendingRef.current.length === 0) return;
+		const toAppend = pendingRef.current;
+		pendingRef.current = [];
+		appendToCache(toAppend);
+	}, [paused, appendToCache]);
 
-	return { logs, isLoading, error };
+	return {
+		logs,
+		isLoading: isFetching && logs.length === 0,
+		error: error?.message ?? null,
+		streamError,
+		isLoadingMore: isFetchingPreviousPage,
+		hasMore: hasPreviousPage,
+		loadMoreHistory: fetchPreviousPage,
+	};
 }
