@@ -33,6 +33,7 @@ import {
 	FILE_TAG_SHM,
 	FILE_TAG_WAL,
 	getChunkKey,
+	getChunkKeyRangeEnd,
 	getMetaKey,
 	type SqliteFileTag,
 } from "./kv";
@@ -887,7 +888,7 @@ class SqliteSystem implements SqliteVfsRegistration {
 		// Update file size if we wrote past the end
 		const previousSize = file.size;
 		const newSize = Math.max(file.size, writeEndOffset);
-		if (newSize !== previousSize) {
+		if (newSize !== oldSize) {
 			file.size = newSize;
 			file.metaDirty = true;
 		}
@@ -900,6 +901,7 @@ class SqliteSystem implements SqliteVfsRegistration {
 		if (file.metaDirty) {
 			file.metaDirty = false;
 		}
+		file.metaDirty = false;
 
 		return VFS.SQLITE_OK;
 	}
@@ -1002,13 +1004,16 @@ class SqliteSystem implements SqliteVfsRegistration {
 	}
 
 	/**
-	 * Internal delete implementation
+	 * Internal delete implementation.
+	 * Uses deleteRange for O(1) chunk deletion instead of enumerating
+	 * individual chunk keys. The chunk keys for a file tag are
+	 * lexicographically contiguous, so range deletion is always safe.
 	 */
 	async #delete(path: string): Promise<void> {
 		const { options, fileTag } = this.#resolveFileOrThrow(path);
 		const metaKey = getMetaKey(fileTag);
 
-		// Get file size to find out how many chunks to delete
+		// Get file size to check if the file exists
 		const sizeData = await options.get(metaKey);
 
 		if (!sizeData) {
@@ -1016,7 +1021,11 @@ class SqliteSystem implements SqliteVfsRegistration {
 			return;
 		}
 
-		const size = decodeFileMeta(sizeData);
+		// Delete all chunks via range delete
+		await options.deleteRange(
+			getChunkKey(fileTag, 0),
+			getChunkKeyRangeEnd(fileTag),
+		);
 
 		// Delete all chunks
 		const keysToDelete: Uint8Array[] = [metaKey];
@@ -1070,6 +1079,12 @@ class SqliteSystem implements SqliteVfsRegistration {
 
 	xFileControl(_fileId: number, _flags: number, _pArg: number): number {
 		return VFS.SQLITE_NOTFOUND;
+	}
+
+	// Return CHUNK_SIZE so SQLite aligns journal I/O to chunk boundaries.
+	// Must match the native VFS (kv_io_sector_size in sqlite-native/src/vfs.rs).
+	xSectorSize(_fileId: number): number {
+		return CHUNK_SIZE;
 	}
 
 	xDeviceCharacteristics(_fileId: number): number {

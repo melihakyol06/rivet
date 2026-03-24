@@ -1500,6 +1500,8 @@ export class ActorInstance<
 						this.driver.kvBatchGet(this.#actorId, keys),
 					batchDelete: (keys) =>
 						this.driver.kvBatchDelete(this.#actorId, keys),
+					deleteRange: (start, end) =>
+						this.driver.kvDeleteRange(this.#actorId, start, end),
 				},
 				sqliteVfs: this.#sqliteVfs,
 			});
@@ -1615,6 +1617,48 @@ export class ActorInstance<
 		if (res) {
 			this.#rLog.warn({
 				msg: "timed out waiting for connections to close, shutting down anyway",
+			});
+		}
+	}
+
+	async #waitForPendingDisconnects() {
+		const count = this.connectionManager.pendingDisconnectCount;
+		if (count === 0) {
+			return;
+		}
+
+		this.#rLog.debug({
+			msg: "waiting for pending disconnect callbacks",
+			count,
+		});
+
+		const timedOut = await Promise.race([
+			new Promise<false>((resolve) => {
+				const check = () => {
+					if (
+						this.connectionManager.pendingDisconnectCount === 0
+					) {
+						resolve(false);
+					} else {
+						setTimeout(check, 10);
+					}
+				};
+				check();
+			}),
+			new Promise<true>((resolve) =>
+				setTimeout(() => resolve(true), 5_000),
+			),
+		]);
+
+		if (timedOut) {
+			this.#rLog.warn({
+				msg: "timed out waiting for pending disconnect callbacks",
+				remaining:
+					this.connectionManager.pendingDisconnectCount,
+			});
+		} else {
+			this.#rLog.debug({
+				msg: "all pending disconnect callbacks completed",
 			});
 		}
 	}

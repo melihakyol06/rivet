@@ -3357,6 +3357,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "pegboard-kv-channel"
+version = "2.1.6"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "futures-util",
+ "gasoline",
+ "http-body 1.0.1",
+ "http-body-util",
+ "hyper 1.6.0",
+ "hyper-tungstenite",
+ "namespace",
+ "pegboard",
+ "rand 0.8.5",
+ "rivet-config",
+ "rivet-error",
+ "rivet-guard-core",
+ "rivet-kv-channel-protocol",
+ "rivet-runtime",
+ "rivet-util",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "universaldb",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "pegboard-runner"
 version = "2.1.6"
 dependencies = [
@@ -4495,6 +4525,7 @@ dependencies = [
  "once_cell",
  "pegboard",
  "pegboard-gateway",
+ "pegboard-kv-channel",
  "pegboard-runner",
  "regex",
  "rivet-api-builder",
@@ -4513,6 +4544,7 @@ dependencies = [
  "rustls-pemfile",
  "serde",
  "serde_json",
+ "subtle",
  "tokio",
  "tokio-tungstenite",
  "tower 0.5.2",
@@ -4565,6 +4597,16 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "rivet-kv-channel-protocol"
+version = "2.1.6"
+dependencies = [
+ "serde",
+ "serde_bare",
+ "vbare",
+ "vbare-compiler",
 ]
 
 [[package]]
