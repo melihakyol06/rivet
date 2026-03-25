@@ -1,10 +1,11 @@
 import type { Rivet } from "@rivet-gg/cloud";
 import { faTriangleExclamation, Icon } from "@rivet-gg/icons";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorDetails } from "@/components/actors";
 import { VirtualScrollArea } from "@/components/virtual-scroll-area";
 import { AnsiText } from "./lib/ansi";
+import { logfmt } from "./lib/logfmt";
 import { cn } from "./lib/utils";
 import { ScrollArea } from "./ui/scroll-area";
 import { Skeleton } from "./ui/skeleton";
@@ -16,6 +17,109 @@ const SKELETON_KEYS = [
 	"u", "v", "w", "x", "y", "z", "aa", "ab", "ac", "ad",
 	"ae", "af", "ag", "ah", "ai", "aj", "ak", "al", "am", "an",
 ];
+
+// Columns extracted into dedicated display columns.
+const EXTRACTED_KEYS = new Set(["level", "lvl", "msg", "message"]);
+
+// Level column is fixed — badge text is at most 5 chars + padding.
+const COL_LEVEL = "w-[7ch] shrink-0";
+
+// Timestamp and region columns are sized dynamically via CSS custom properties
+// set on the outer wrapper. Rows and header read them via inline style.
+const COL_TIMESTAMP_STYLE = { width: "var(--col-ts)", flexShrink: 0 } as const;
+const COL_REGION_STYLE = { width: "var(--col-region)", flexShrink: 0 } as const;
+
+type LevelVariant = "error" | "warn" | "info" | "debug" | "trace" | "default";
+
+function getLevelVariant(level: string): LevelVariant {
+	const l = level.toLowerCase();
+	if (l === "error" || l === "err" || l === "fatal" || l === "crit") return "error";
+	if (l === "warn" || l === "warning") return "warn";
+	if (l === "info") return "info";
+	if (l === "debug" || l === "dbg") return "debug";
+	if (l === "trace") return "trace";
+	return "default";
+}
+
+const LEVEL_CLASSES: Record<LevelVariant, string> = {
+	error: "text-destructive-foreground bg-destructive/40",
+	warn: "text-yellow-300 bg-yellow-900/40",
+	info: "text-green-300 bg-green-900/30",
+	debug: "text-blue-300 bg-blue-900/30",
+	trace: "text-neutral-400 bg-neutral-800/50",
+	default: "text-neutral-300 bg-neutral-800/50",
+};
+
+interface ParsedMessage {
+	level: string | null;
+	msg: string | null;
+	extras: Array<[string, string]>;
+	isLogfmt: boolean;
+}
+
+function parseMessage(raw: string): ParsedMessage {
+	if (!raw.includes("=")) {
+		return { level: null, msg: null, extras: [], isLogfmt: false };
+	}
+
+	const parsed = logfmt.parse(raw);
+	const keys = Object.keys(parsed);
+	if (keys.length === 0) {
+		return { level: null, msg: null, extras: [], isLogfmt: false };
+	}
+
+	const level =
+		typeof parsed.level === "string"
+			? parsed.level
+			: typeof parsed.lvl === "string"
+				? parsed.lvl
+				: null;
+
+	const msg =
+		typeof parsed.msg === "string"
+			? parsed.msg
+			: typeof parsed.message === "string"
+				? parsed.message
+				: null;
+
+	const extras: Array<[string, string]> = [];
+	for (const key of keys) {
+		if (EXTRACTED_KEYS.has(key)) continue;
+		const val = parsed[key];
+		if (val === null || val === undefined) continue;
+		extras.push([key, typeof val === "object" ? JSON.stringify(val) : String(val)]);
+	}
+
+	return { level, msg, extras, isLogfmt: true };
+}
+
+// Measures the widest timestamp and region seen so far and returns them as
+// CSS ch values. Uses a ref so widths only ever grow, never shrink (avoids
+// re-layout churn on every new log line).
+function useColWidths(logs: Rivet.LogHistoryResponseItem[]) {
+	const maxRef = useRef({ ts: 0, region: 0 });
+
+	return useMemo(() => {
+		let changed = false;
+		for (const log of logs) {
+			if (log.timestamp.length > maxRef.current.ts) {
+				maxRef.current.ts = log.timestamp.length;
+				changed = true;
+			}
+			// +2 for the surrounding brackets rendered in the UI.
+			const rLen = log.region ? log.region.length + 2 : 0;
+			if (rLen > maxRef.current.region) {
+				maxRef.current.region = rLen;
+				changed = true;
+			}
+		}
+		void changed;
+		return {
+			"--col-ts": `${maxRef.current.ts || 24}ch`,
+			"--col-region": `${maxRef.current.region || 12}ch`,
+		} as React.CSSProperties;
+	}, [logs]);
+}
 
 interface DeploymentLogsProps {
 	pool: string;
@@ -33,6 +137,8 @@ interface LogRowData {
 }
 
 function LogRow({ entry, isSentinel, isLoadingMore, ...props }: LogRowData) {
+	const parsed = useMemo(() => (entry ? parseMessage(entry.message) : null), [entry]);
+
 	if (isSentinel) {
 		return (
 			<div
@@ -47,34 +153,80 @@ function LogRow({ entry, isSentinel, isLoadingMore, ...props }: LogRowData) {
 		);
 	}
 
-	if (!entry) return null;
+	if (!entry || !parsed) return null;
+
+	const isStderr = entry.stream === "stderr";
 
 	return (
 		<div
 			{...props}
-			className={cn("font-mono grid grid-cols-subgrid", props.className)}
+			className={cn(
+				"flex gap-3 whitespace-pre-wrap break-words px-4 py-1 border-b text-xs",
+				isStderr ? "text-red-400" : "text-muted-foreground",
+				props.className,
+			)}
 		>
-			<div
-				className={cn(
-					"grid grid-cols-[max-content,16ch,3fr] gap-3 whitespace-pre-wrap break-words px-4 py-1 border-b",
-					{
-						"text-red-400": entry.stream === "stderr",
-						"text-muted-foreground": entry.stream !== "stderr",
-					},
-				)}
-			>
-				<span className="text-neutral-500 shrink-0">
-					{entry.timestamp}
-				</span>
-				{entry.region ? (
-					<span className="text-neutral-600 shrink-0">
-						[{entry.region}]
-					</span>
-				) : null}
-				<span className="flex-1">
+			<span className="text-neutral-500 shrink-0" style={COL_TIMESTAMP_STYLE}>
+				{entry.timestamp}
+			</span>
+			<span className="text-neutral-600 shrink-0" style={COL_REGION_STYLE}>
+				{entry.region ? `[${entry.region}]` : ""}
+			</span>
+			<LevelCell level={parsed.isLogfmt ? parsed.level : null} isStderr={isStderr} />
+			<span className="flex-1 min-w-0">
+				{parsed.isLogfmt ? (
+					<>
+						{parsed.msg ? <AnsiText text={parsed.msg} /> : null}
+						{parsed.extras.length > 0 ? (
+							<span className="text-neutral-500 ml-2">
+								{parsed.extras.map(([k, v]) => (
+									<span key={k} className="mr-2">
+										<span className="text-neutral-400">{k}</span>
+										<span className="text-neutral-600">=</span>
+										<span>{v}</span>
+									</span>
+								))}
+							</span>
+						) : null}
+					</>
+				) : (
 					<AnsiText text={entry.message} />
+				)}
+			</span>
+		</div>
+	);
+}
+
+function LevelCell({ level, isStderr }: { level: string | null; isStderr: boolean }) {
+	if (isStderr && !level) {
+		return (
+			<span className={COL_LEVEL}>
+				<span className={cn("px-1 rounded text-[10px] font-semibold uppercase", LEVEL_CLASSES.error)}>
+					err
 				</span>
-			</div>
+			</span>
+		);
+	}
+	if (!level) {
+		return <span className={COL_LEVEL} />;
+	}
+	const variant = getLevelVariant(level);
+	return (
+		<span className={COL_LEVEL}>
+			<span className={cn("px-1 rounded text-[10px] font-semibold uppercase", LEVEL_CLASSES[variant])}>
+				{level.slice(0, 5)}
+			</span>
+		</span>
+	);
+}
+
+function LogsHeader() {
+	return (
+		<div className="flex gap-3 px-4 py-1 border-b text-xs font-semibold uppercase tracking-wider text-neutral-500 bg-card shrink-0 select-none">
+			<span className="shrink-0" style={COL_TIMESTAMP_STYLE}>Timestamp</span>
+			<span className="shrink-0" style={COL_REGION_STYLE}>Region</span>
+			<span className={COL_LEVEL}>Level</span>
+			<span className="flex-1">Message</span>
 		</div>
 	);
 }
@@ -94,6 +246,8 @@ export function DeploymentLogs({
 	const [follow, setFollow] = useState(true);
 	// Track the log count before a load-more so we can restore scroll position.
 	const prevLogCountRef = useRef(0);
+
+	const colWidths = useColWidths(logs);
 
 	// When hasMore, index 0 is the sentinel row; real logs start at index 1.
 	const sentinelOffset = hasMore ? 1 : 0;
@@ -198,13 +352,17 @@ export function DeploymentLogs({
 	}
 
 	return (
-		<div className="h-full font-mono text-xs text-neutral-100 overflow-hidden flex flex-col">
+		<div
+			className="h-full font-mono text-xs text-neutral-100 overflow-hidden flex flex-col"
+			style={colWidths}
+		>
 			{streamError ? (
 				<div className="flex items-center gap-2 px-4 py-2 bg-destructive/20 text-destructive-foreground text-xs border-b border-destructive/40 shrink-0">
 					<Icon icon={faTriangleExclamation} className="shrink-0" />
 					<span>Stream error: {streamError}</span>
 				</div>
 			) : null}
+			<LogsHeader />
 			<VirtualScrollArea<LogRowData>
 				virtualizerRef={virtualizerRef}
 				viewportRef={viewportRef}

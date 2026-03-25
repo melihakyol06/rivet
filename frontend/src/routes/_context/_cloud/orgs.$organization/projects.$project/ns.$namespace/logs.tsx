@@ -9,6 +9,7 @@ import {
 } from "@rivet-gg/icons";
 import { useInfiniteQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
 import { startTransition, useCallback, useRef, useState } from "react";
 import { HelpDropdown } from "@/app/help-dropdown";
 import { Content } from "@/app/layout";
@@ -30,6 +31,9 @@ import {
 export const Route = createFileRoute(
 	"/_context/_cloud/orgs/$organization/projects/$project/ns/$namespace/logs",
 )({
+	validateSearch: z.object({
+		search: z.string().optional(),
+	}),
 	component: RouteComponent,
 	loader: async ({ context }) => {
 		const dataProvider = context.dataProvider;
@@ -58,7 +62,8 @@ function RouteComponent() {
 		useDataProvider().datacentersQueryOptions(),
 	);
 
-	const [search, setSearch] = useState("");
+	const { search: initialSearch } = Route.useSearch();
+	const [search, setSearch] = useState(initialSearch ?? "");
 	const [isPaused, setIsPaused] = useState(false);
 	const [region, setRegion] = useState<string>("all");
 	const logsRef = useRef<Rivet.LogHistoryResponseItem[]>([]);
@@ -116,6 +121,7 @@ function RouteComponent() {
 								className="bg-transparent outline-none text-xs placeholder:text-muted-foreground font-sans flex-1 py-2"
 								placeholder="Search logs..."
 								spellCheck={false}
+								defaultValue={initialSearch}
 								onChange={(e) =>
 									startTransition(() =>
 										setSearch(e.target.value),

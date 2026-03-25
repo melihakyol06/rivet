@@ -120,7 +120,9 @@ export const createGlobalContext = ({ clerk }: { clerk: Clerk }) => {
 				initialPageParam: undefined as string | undefined,
 				// Only offer a previous page if the first (oldest) fetched page was full.
 				getPreviousPageParam: (firstPage) =>
-					firstPage.length >= 500 ? firstPage[0].timestamp : undefined,
+					firstPage.length >= 500
+						? firstPage[0].timestamp
+						: undefined,
 				getNextPageParam: () => undefined,
 				select: (data) => ({
 					pages: data.pages,
@@ -1171,6 +1173,19 @@ export const createNamespaceContext = ({
 				namespace,
 				pool: opts.pool,
 				safe: opts.safe,
+			});
+		},
+
+		currentNamespaceHasManagedPoolQueryOptions(
+			opts: { pool?: string } = {},
+		) {
+			return queryOptions({
+				...parent.currentProjectManagedPoolQueryOptions({
+					namespace,
+					pool: opts.pool ?? "default",
+					safe: true,
+				}),
+				select: (data) => !!data?.config.image,
 			});
 		},
 
