@@ -1,15 +1,15 @@
 import z from "zod/v4";
 import { EncodingSchema } from "@/actor/protocol/serde";
-import { type GetUpgradeWebSocket } from "@/utils";
+import type { RegistryConfig } from "@/registry/config";
+import type { GetUpgradeWebSocket } from "@/utils";
+import { tryParseEndpoint } from "@/utils/endpoint-parser";
 import {
-	getRivetEngine,
 	getRivetEndpoint,
-	getRivetToken,
+	getRivetEngine,
 	getRivetNamespace,
 	getRivetRunner,
+	getRivetToken,
 } from "@/utils/env-vars";
-import type { RegistryConfig } from "@/registry/config";
-import { tryParseEndpoint } from "@/utils/endpoint-parser";
 
 const DEFAULT_ENDPOINT = "http://localhost:6420";
 

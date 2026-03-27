@@ -3,9 +3,8 @@ import type {
 	RunnerConfig as EngineRunnerConfig,
 	HibernatingWebSocketMetadata,
 } from "@rivetkit/engine-runner";
-import type { ISqliteVfs } from "@rivetkit/sqlite-vfs";
-import { SqliteVfsPoolManager } from "@/driver-helpers/sqlite-pool";
 import { idToStr, Runner } from "@rivetkit/engine-runner";
+import type { ISqliteVfs } from "@rivetkit/sqlite-vfs";
 import * as cbor from "cbor-x";
 import type { Context as HonoContext } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -20,9 +19,9 @@ import {
 	workflowStoragePrefix,
 } from "@/actor/instance/keys";
 import {
-	type PreloadMap,
 	compareBytes,
 	createPreloadMap,
+	type PreloadMap,
 } from "@/actor/instance/preload-map";
 import { deserializeActorKey } from "@/actor/keys";
 import { getValueLength } from "@/actor/protocol/old";
@@ -51,6 +50,7 @@ import {
 	getInitialActorKvState,
 	type ManagerDriver,
 } from "@/driver-helpers/mod";
+import { SqliteVfsPoolManager } from "@/driver-helpers/sqlite-pool";
 import { buildActorNames, type RegistryConfig } from "@/registry/config";
 import { getEndpoint } from "@/remote-manager-driver/api-utils";
 import {
@@ -604,7 +604,7 @@ export class EngineActorDriver implements ActorDriver {
 
 		try {
 			// Check if this actor already has persisted state.
-			let checkStart = performance.now();
+			const checkStart = performance.now();
 			const [persistDataBuffer] = await this.#runner.kvGet(actorId, [
 				KEYS.PERSIST_DATA,
 			]);

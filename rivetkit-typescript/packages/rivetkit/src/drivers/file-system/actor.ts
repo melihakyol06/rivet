@@ -1,14 +1,14 @@
+import type { ISqliteVfs } from "@rivetkit/sqlite-vfs";
 import type { AnyClient } from "@/client/client";
 import type { RawDatabaseClient } from "@/db/config";
-import type { ISqliteVfs } from "@rivetkit/sqlite-vfs";
-import {
-	type ActorDriver,
-	type AnyActorInstance,
-	type ManagerDriver,
+import type {
+	ActorDriver,
+	AnyActorInstance,
+	ManagerDriver,
 } from "@/driver-helpers/mod";
 import { SqliteVfsPoolManager } from "@/driver-helpers/sqlite-pool";
+import type { RegistryConfig } from "@/registry/config";
 import type { FileSystemGlobalState } from "./global-state";
-import { RegistryConfig } from "@/registry/config";
 
 export type ActorDriverContext = Record<never, never>;
 

@@ -15,7 +15,7 @@ import {
 	type SortingState,
 	useReactTable as useTable,
 } from "@tanstack/react-table";
-import { Fragment, useCallback, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
 	Badge,
 	Button,
@@ -79,7 +79,7 @@ export function DatabaseTable({
 		},
 	});
 
-	const calculateColumnSizes = useCallback(() => {
+	const columnSizeVars = useMemo(() => {
 		const headers = table.getFlatHeaders();
 		const colSizes: { [key: string]: number } = {};
 		for (let i = 0; i < headers.length; i++) {
@@ -90,10 +90,6 @@ export function DatabaseTable({
 		}
 		return colSizes;
 	}, [table]);
-
-	const columnSizeVars = useMemo(() => {
-		return calculateColumnSizes();
-	}, [calculateColumnSizes]);
 
 	return (
 		<Table

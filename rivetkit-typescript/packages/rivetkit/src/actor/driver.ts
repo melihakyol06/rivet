@@ -1,11 +1,11 @@
+import type { ISqliteVfs } from "@rivetkit/sqlite-vfs";
 import type { Context as HonoContext } from "hono";
 import type { AnyClient } from "@/client/client";
+import type { DrizzleDatabaseClient, RawDatabaseClient } from "@/db/config";
 import type { ManagerDriver } from "@/manager/driver";
-import { type AnyConn } from "./conn/mod";
-import type { AnyActorInstance } from "./instance/mod";
 import type { RegistryConfig } from "@/registry/config";
-import type { RawDatabaseClient, DrizzleDatabaseClient } from "@/db/config";
-import type { ISqliteVfs } from "@rivetkit/sqlite-vfs";
+import type { AnyConn } from "./conn/mod";
+import type { AnyActorInstance } from "./instance/mod";
 
 export type ActorDriverBuilder = (
 	config: RegistryConfig,

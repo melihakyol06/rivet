@@ -11,13 +11,14 @@ import {
 	RegistryConfigSchema,
 } from "@/registry/config";
 import { logger } from "./log";
-import { runActionFeaturesTests } from "./tests/action-features";
 import { runAccessControlTests } from "./tests/access-control";
+import { runActionFeaturesTests } from "./tests/action-features";
 import { runActorConnTests } from "./tests/actor-conn";
 import { runActorConnHibernationTests } from "./tests/actor-conn-hibernation";
 import { runActorConnStateTests } from "./tests/actor-conn-state";
 import { runActorDbTests } from "./tests/actor-db";
-import { runConnErrorSerializationTests } from "./tests/conn-error-serialization";
+import { runActorDbKvStatsTests } from "./tests/actor-db-kv-stats";
+import { runActorDbPragmaMigrationTests } from "./tests/actor-db-pragma-migration";
 import { runActorDestroyTests } from "./tests/actor-destroy";
 import { runActorDriverTests } from "./tests/actor-driver";
 import { runActorErrorHandlingTests } from "./tests/actor-error-handling";
@@ -30,16 +31,15 @@ import { runActorOnStateChangeTests } from "./tests/actor-onstatechange";
 import { runActorQueueTests } from "./tests/actor-queue";
 import { runActorRunTests } from "./tests/actor-run";
 import { runActorSandboxTests } from "./tests/actor-sandbox";
+import { runActorStateZodCoercionTests } from "./tests/actor-state-zod-coercion";
 import { runActorStatelessTests } from "./tests/actor-stateless";
 import { runActorVarsTests } from "./tests/actor-vars";
 import { runActorWorkflowTests } from "./tests/actor-workflow";
+import { runConnErrorSerializationTests } from "./tests/conn-error-serialization";
 import { runManagerDriverTests } from "./tests/manager-driver";
 import { runRawHttpTests } from "./tests/raw-http";
 import { runRawHttpRequestPropertiesTests } from "./tests/raw-http-request-properties";
 import { runRawWebSocketTests } from "./tests/raw-websocket";
-import { runActorDbKvStatsTests } from "./tests/actor-db-kv-stats";
-import { runActorDbPragmaMigrationTests } from "./tests/actor-db-pragma-migration";
-import { runActorStateZodCoercionTests } from "./tests/actor-state-zod-coercion";
 import { runRequestAccessTests } from "./tests/request-access";
 
 export interface SkipTests {

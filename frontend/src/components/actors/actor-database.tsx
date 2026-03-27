@@ -1,4 +1,3 @@
-import { Button, Flex, ScrollArea, WithTooltip } from "@/components";
 import {
 	faChevronLeft,
 	faChevronRight,
@@ -9,6 +8,7 @@ import {
 } from "@rivet-gg/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Button, Flex, ScrollArea, WithTooltip } from "@/components";
 import { ShimmerLine } from "../shimmer-line";
 import {
 	Select,

@@ -4,25 +4,25 @@ import { configureBaseLogger, configureDefaultLogger } from "@/common/log";
 import { chooseDefaultDriver } from "@/drivers/default";
 import { ENGINE_PORT, ensureEngineProcess } from "@/engine-process/mod";
 import { getInspectorUrl } from "@/inspector/utils";
+import type { ManagerDriver } from "@/manager/driver";
 import { buildManagerRouter } from "@/manager/router";
-import { configureServerlessRunner } from "@/serverless/configure";
-import { detectRuntime, type GetUpgradeWebSocket } from "@/utils";
-import pkg from "../package.json" with { type: "json" };
-import {
-	type DriverConfig,
-	type RegistryActors,
-	type RegistryConfig,
+import type { Registry } from "@/registry";
+import type {
+	DriverConfig,
+	RegistryActors,
+	RegistryConfig,
 } from "@/registry/config";
-import { logger } from "../src/registry/log";
+import { configureServerlessRunner } from "@/serverless/configure";
+import { buildServerlessRouter } from "@/serverless/router";
+import { detectRuntime, type GetUpgradeWebSocket } from "@/utils";
+import { getNodeFsSync } from "@/utils/node";
 import {
 	crossPlatformServe,
 	findFreePort,
 	loadRuntimeServeStatic,
 } from "@/utils/serve";
-import { ManagerDriver } from "@/manager/driver";
-import { buildServerlessRouter } from "@/serverless/router";
-import type { Registry } from "@/registry";
-import { getNodeFsSync } from "@/utils/node";
+import pkg from "../package.json" with { type: "json" };
+import { logger } from "../src/registry/log";
 
 /** Tracks whether the runtime was started as serverless or runner. */
 export type StartKind = "serverless" | "runner";

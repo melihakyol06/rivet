@@ -1,11 +1,11 @@
 import { z } from "zod/v4";
 import { getLogger } from "@/common/log";
 import {
-	isDev,
 	getNodeEnv,
-	getRivetTotalSlots,
 	getRivetRunner,
 	getRivetRunnerVersion,
+	getRivetTotalSlots,
+	isDev,
 } from "@/utils/env-vars";
 
 let warnedMissingVersion = false;

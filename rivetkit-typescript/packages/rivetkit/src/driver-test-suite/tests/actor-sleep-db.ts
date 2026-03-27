@@ -1,21 +1,25 @@
 import { describe, expect, test, vi } from "vitest";
 import { RAW_WS_HANDLER_DELAY } from "../../../fixtures/driver-test-suite/sleep";
-import {
-	SLEEP_DB_TIMEOUT,
-} from "../../../fixtures/driver-test-suite/sleep-db";
+import { SLEEP_DB_TIMEOUT } from "../../../fixtures/driver-test-suite/sleep-db";
 import type { DriverTestConfig } from "../mod";
 import { setupDriverTest, waitFor } from "../utils";
 
 type LogEntry = { id: number; event: string; created_at: number };
 
-async function connectRawWebSocket(handle: { webSocket(): Promise<WebSocket> }) {
+async function connectRawWebSocket(handle: {
+	webSocket(): Promise<WebSocket>;
+}) {
 	const ws = await handle.webSocket();
 
 	await new Promise<void>((resolve, reject) => {
 		ws.addEventListener("open", () => resolve(), { once: true });
-		ws.addEventListener("error", () => reject(new Error("websocket error")), {
-			once: true,
-		});
+		ws.addEventListener(
+			"error",
+			() => reject(new Error("websocket error")),
+			{
+				once: true,
+			},
+		);
 	});
 
 	await new Promise<void>((resolve, reject) => {
@@ -47,10 +51,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 		"Actor Sleep Database Tests",
 		() => {
 			test("onSleep can write to c.db", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const actor = client.sleepWithDb.getOrCreate();
 
@@ -72,23 +73,16 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 
 				// Verify both wake and sleep events were logged to the DB
 				const entries = await actor.getLogEntries();
-				const events = entries.map(
-					(e: { event: string }) => e.event,
-				);
+				const events = entries.map((e: { event: string }) => e.event);
 				expect(events).toContain("wake");
 				expect(events).toContain("before-sleep");
 				expect(events).toContain("sleep");
 			});
 
 			test("c.db works after sleep-wake cycle", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
-				const actor = client.sleepWithDb.getOrCreate([
-					"db-after-wake",
-				]);
+				const actor = client.sleepWithDb.getOrCreate(["db-after-wake"]);
 
 				// Insert before sleep
 				await actor.insertLogEntry("before");
@@ -100,9 +94,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 				await actor.insertLogEntry("after-wake");
 
 				const entries = await actor.getLogEntries();
-				const events = entries.map(
-					(e: { event: string }) => e.event,
-				);
+				const events = entries.map((e: { event: string }) => e.event);
 				expect(events).toContain("before");
 				expect(events).toContain("sleep");
 				expect(events).toContain("wake");
@@ -110,14 +102,9 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 			});
 
 			test("scheduled alarm can use c.db after sleep-wake", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
-				const actor = client.sleepWithDb.getOrCreate([
-					"alarm-db-wake",
-				]);
+				const actor = client.sleepWithDb.getOrCreate(["alarm-db-wake"]);
 
 				// Schedule an alarm that fires after the actor would sleep
 				await actor.setAlarm(SLEEP_DB_TIMEOUT + 500);
@@ -127,26 +114,18 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 
 				// Verify the alarm wrote to the DB
 				const entries = await actor.getLogEntries();
-				const events = entries.map(
-					(e: { event: string }) => e.event,
-				);
+				const events = entries.map((e: { event: string }) => e.event);
 				expect(events).toContain("alarm");
 			});
 
 			test("scheduled action stays awake until db work completes", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const actor = client.sleepWithSlowScheduledDb.getOrCreate([
 					"slow-scheduled-db",
 				]);
 
-				await actor.scheduleSlowAlarm(
-					50,
-					SLEEP_DB_TIMEOUT + 250,
-				);
+				await actor.scheduleSlowAlarm(50, SLEEP_DB_TIMEOUT + 250);
 
 				await waitFor(
 					driverTestConfig,
@@ -158,9 +137,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 				expect(counts.startCount).toBe(2);
 
 				const entries = await actor.getLogEntries();
-				const events = entries.map(
-					(e: { event: string }) => e.event,
-				);
+				const events = entries.map((e: { event: string }) => e.event);
 				expect(events).toContain("slow-alarm-start");
 				expect(events).toContain("slow-alarm-finish");
 				expect(events.indexOf("slow-alarm-finish")).toBeLessThan(
@@ -169,10 +146,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 			});
 
 			test("onDisconnect can write to c.db during sleep shutdown", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				// Create actor with a connection
 				const handle = client.sleepWithDbConn.getOrCreate([
@@ -204,9 +178,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 
 				// Verify events were logged to the DB
 				const entries = await handle.getLogEntries();
-				const events = entries.map(
-					(e: LogEntry) => e.event,
-				);
+				const events = entries.map((e: LogEntry) => e.event);
 
 				// CURRENT BEHAVIOR: onDisconnect runs during sleep shutdown
 				// and the DB is still open at that point, so the write should succeed.
@@ -216,10 +188,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 			});
 
 			test("async websocket close handler can use c.db before sleep completes", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const actor = client.sleepWithRawWsCloseDb.getOrCreate([
 					"raw-ws-close-db",
@@ -227,7 +196,9 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 				const ws = await connectRawWebSocket(actor);
 
 				await new Promise<void>((resolve, reject) => {
-					ws.addEventListener("close", () => resolve(), { once: true });
+					ws.addEventListener("close", () => resolve(), {
+						once: true,
+					});
 					ws.addEventListener(
 						"error",
 						() => reject(new Error("websocket error")),
@@ -252,19 +223,17 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 			});
 
 			test("async websocket addEventListener close handler can use c.db before sleep completes", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
-				const actor =
-					client.sleepWithRawWsCloseDbListener.getOrCreate([
-						"raw-ws-close-db-listener",
-					]);
+				const actor = client.sleepWithRawWsCloseDbListener.getOrCreate([
+					"raw-ws-close-db-listener",
+				]);
 				const ws = await connectRawWebSocket(actor);
 
 				await new Promise<void>((resolve, reject) => {
-					ws.addEventListener("close", () => resolve(), { once: true });
+					ws.addEventListener("close", () => resolve(), {
+						once: true,
+					});
 					ws.addEventListener(
 						"error",
 						() => reject(new Error("websocket error")),
@@ -289,10 +258,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 			});
 
 			test("broadcast works in onSleep", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const handle = client.sleepWithDbAction.getOrCreate([
 					"broadcast-in-onsleep",
@@ -332,9 +298,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 				// Both "sleep-start" and "sleep-end" should be written
 				// since broadcast no longer throws.
 				const entries = await handle.getLogEntries();
-				const events = entries.map(
-					(e: LogEntry) => e.event,
-				);
+				const events = entries.map((e: LogEntry) => e.event);
 
 				expect(events).toContain("before-sleep");
 				expect(events).toContain("sleep-start");
@@ -342,10 +306,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 			});
 
 			test("action via handle during sleep is queued and runs on woken instance", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				// CURRENT BEHAVIOR: When an action is sent via a stateless
 				// handle while the actor is sleeping, the file-system driver
@@ -389,9 +350,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 				expect(counts.startCount).toBeGreaterThanOrEqual(2);
 
 				const entries = await handle.getLogEntries();
-				const events = entries.map(
-					(e: LogEntry) => e.event,
-				);
+				const events = entries.map((e: LogEntry) => e.event);
 
 				// CURRENT BEHAVIOR: The action succeeds because the driver
 				// wakes the actor to process it. The action runs on the new
@@ -402,10 +361,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 			});
 
 			test("waitUntil works in onSleep", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const actor = client.sleepWaitUntil.getOrCreate([
 					"waituntil-onsleep",
@@ -424,18 +380,13 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 
 				// Verify the waitUntil'd write appeared in the DB
 				const entries = await actor.getLogEntries();
-				const events = entries.map(
-					(e: { event: string }) => e.event,
-				);
+				const events = entries.map((e: { event: string }) => e.event);
 				expect(events).toContain("sleep-start");
 				expect(events).toContain("waituntil-write");
 			});
 
 			test("nested waitUntil inside waitUntil is drained before shutdown", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const actor = client.sleepNestedWaitUntil.getOrCreate([
 					"nested-waituntil",
@@ -454,19 +405,14 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 
 				// Verify both outer and nested waitUntil writes appeared
 				const entries = await actor.getLogEntries();
-				const events = entries.map(
-					(e: { event: string }) => e.event,
-				);
+				const events = entries.map((e: { event: string }) => e.event);
 				expect(events).toContain("sleep-start");
 				expect(events).toContain("outer-waituntil");
 				expect(events).toContain("nested-waituntil");
 			});
 
 			test("enqueue works during onSleep", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const actor = client.sleepEnqueue.getOrCreate([
 					"enqueue-onsleep",
@@ -486,10 +432,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 			});
 
 			test("schedule.after in onSleep persists and fires on wake", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const actor = client.sleepScheduleAfter.getOrCreate([
 					"schedule-after-onsleep",
@@ -513,18 +456,13 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 
 				// Verify the scheduled action wrote to the DB
 				const entries = await actor.getLogEntries();
-				const events = entries.map(
-					(e: { event: string }) => e.event,
-				);
+				const events = entries.map((e: { event: string }) => e.event);
 				expect(events).toContain("sleep");
 				expect(events).toContain("scheduled-action");
 			});
 
 			test("action via WebSocket connection during sleep shutdown succeeds", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				// Actions from pre-existing connections during the graceful
 				// shutdown window should succeed since assertReady() only
@@ -563,19 +501,14 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 
 				// Get log entries after waking
 				const entries = await handle.getLogEntries();
-				const events = entries.map(
-					(e: LogEntry) => e.event,
-				);
+				const events = entries.map((e: LogEntry) => e.event);
 
 				expect(events).toContain("before-sleep");
 				expect(events).toContain("sleep-start");
 				expect(events).toContain("ws-during-sleep");
 			});
-		test("new connections rejected during sleep shutdown", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+			test("new connections rejected during sleep shutdown", async (c) => {
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				// The sleepWithDbAction actor has a 500ms delay in
 				// onSleep, giving us a window to attempt a new connection
@@ -622,10 +555,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 			});
 
 			test("new raw WebSocket during sleep shutdown is rejected or queued", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				// The sleepWithRawWs actor has a 500ms delay in onSleep.
 				// A raw WebSocket request during shutdown is rejected by
@@ -649,9 +579,8 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 				try {
 					await handle.webSocket();
 				} catch (error) {
-					wsError = error instanceof Error
-						? error.message
-						: String(error);
+					wsError =
+						error instanceof Error ? error.message : String(error);
 				}
 
 				// The request should have been rejected
@@ -668,10 +597,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 			});
 
 			test("onSleep throwing does not prevent clean shutdown", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const actor = client.sleepOnSleepThrows.getOrCreate([
 					"onsleep-throws",
@@ -693,17 +619,12 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 
 				// Verify the DB write before the throw was persisted
 				const entries = await actor.getLogEntries();
-				const events = entries.map(
-					(e: { event: string }) => e.event,
-				);
+				const events = entries.map((e: { event: string }) => e.event);
 				expect(events).toContain("sleep-before-throw");
 			});
 
 			test("waitUntil rejection during shutdown does not block shutdown", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const actor = client.sleepWaitUntilRejects.getOrCreate([
 					"waituntil-rejects",
@@ -724,18 +645,13 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 
 				// The succeeding waitUntil should still have run
 				const entries = await actor.getLogEntries();
-				const events = entries.map(
-					(e: { event: string }) => e.event,
-				);
+				const events = entries.map((e: { event: string }) => e.event);
 				expect(events).toContain("sleep");
 				expect(events).toContain("waituntil-after-reject");
 			});
 
 			test("double sleep call is a no-op", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				// Use a connection to send the sleep trigger, because
 				// a handle-based action goes through the driver which
@@ -771,10 +687,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 			});
 
 			test("state mutations in waitUntil callback are persisted", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const actor = client.sleepWaitUntilState.getOrCreate([
 					"waituntil-state-persist",
@@ -796,17 +709,12 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 
 				// Verify the DB write from waitUntil was also persisted
 				const entries = await actor.getLogEntries();
-				const events = entries.map(
-					(e: { event: string }) => e.event,
-				);
+				const events = entries.map((e: { event: string }) => e.event);
 				expect(events).toContain("waituntil-state");
 			});
 
 			test("alarm does not fire during shutdown", async (c) => {
-				const { client } = await setupDriverTest(
-					c,
-					driverTestConfig,
-				);
+				const { client } = await setupDriverTest(c, driverTestConfig);
 
 				const actor = client.sleepWithDb.getOrCreate([
 					"alarm-no-fire-during-shutdown",
@@ -833,9 +741,7 @@ export function runActorSleepDbTests(driverTestConfig: DriverTestConfig) {
 				await waitFor(driverTestConfig, 500);
 
 				const entries = await actor.getLogEntries();
-				const events = entries.map(
-					(e: { event: string }) => e.event,
-				);
+				const events = entries.map((e: { event: string }) => e.event);
 				expect(events).toContain("alarm");
 			});
 		},

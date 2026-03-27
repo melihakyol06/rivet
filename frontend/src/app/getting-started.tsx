@@ -50,9 +50,9 @@ import { cloudEnv } from "@/lib/env";
 import { usePublishableToken } from "@/queries/accessors";
 import { queryClient } from "@/queries/global";
 import { cn } from "../components/lib/utils";
-import { TEST_IDS } from "../utils/test-ids";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { TEST_IDS } from "../utils/test-ids";
 import { DeploymentCheck } from "./deployment-check";
 import { useEndpoint } from "./dialogs/connect-manual-serverfull-frame";
 import {

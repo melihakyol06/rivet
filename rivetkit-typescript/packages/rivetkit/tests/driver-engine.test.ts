@@ -1,9 +1,9 @@
 import { join } from "node:path";
+import invariant from "invariant";
 import { createClientWithDriver } from "@/client/client";
+import { convertRegistryConfigToClientConfig } from "@/client/config";
 import { createTestRuntime, runDriverTests } from "@/driver-test-suite/mod";
 import { createEngineDriver } from "@/drivers/engine/mod";
-import invariant from "invariant";
-import { convertRegistryConfigToClientConfig } from "@/client/config";
 
 runDriverTests({
 	// Use real timers for engine-runner tests
